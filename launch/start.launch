@@ -1,0 +1,12 @@
+<launch>
+    <include file="$(find turtlebot_bringup)/launch/minimal.launch"/>
+    <include file="$(find turtlebot_bringup)/launch/3dsensor.launch"/>
+
+    <node pkg="joy" type="joy_node" name="joy_node"/>
+
+    <node pkg="comp2" type="main.py" name="comp2" output="screen">
+        
+    </node>
+
+    <node pkg="smach_viewer" type="smach_viewer.py" name="smach"/>
+</launch>

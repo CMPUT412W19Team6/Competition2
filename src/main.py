@@ -7,7 +7,7 @@ from geometry_msgs.msg import Twist
 from smach import State, StateMachine
 import smach_ros
 from dynamic_reconfigure.server import Server
-from demo3.cfg import Demo3Config
+from comp2.cfg import Comp2Config
 from nav_msgs.msg import Odometry
 from kobuki_msgs.msg import BumperEvent, Sound
 from tf.transformations import decompose_matrix, compose_matrix
@@ -19,12 +19,33 @@ import math
 import random
 
 
-START = False
+START = True
 POSE = [0, 0, 0, 0]
 turn_direction = 1
 
-# TODO: update POSE from callback
+Kp = 1.0 / 500.0
+Kd = 1.0 / 1000.0
+Ki = 0
+dt = 1.0 / 20
+linear_vel = 0.2
 
+white_max_h = 250
+white_max_s = 60
+white_max_v = 256
+
+white_min_h = 0
+white_min_s = 0
+white_min_v = 230
+
+red_max_h = 360
+red_max_s = 256
+red_max_v = 225
+
+red_min_h = 150
+red_min_s = 150
+red_min_v = 80
+
+# TODO: update POSE from callback
 
 class WaitForButton(State):
     def __init__(self):
@@ -49,11 +70,94 @@ class FollowLine(State):
     def __init__(self):
         State.__init__(self, outcomes=["see_red", "exit", "failure"])
 
-    def execute(self, userdata):
-        global START
+        self.bridge = cv_bridge.CvBridge()
+        self.image_sub = rospy.Subscriber('camera/rgb/image_raw',
+                                          Image, self.image_callback)
+        self.cmd_vel_pub = rospy.Publisher('cmd_vel_mux/input/teleop',
+                                           Twist, queue_size=1)
 
+        self.twist = Twist()
+        self.found_red = False
+        self.cx = None
+        self.cy = None
+        self.w = None
+        self.dt = 1.0 / 20
+
+    def image_callback(self, msg):
+        global RED_VISIBLE, white_max_h, white_max_s, white_max_v, white_min_h, white_min_s, white_min_v, red_max_h, red_max_s, red_max_v, red_min_h, red_min_s, red_min_v
+
+        image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        hsv2 = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        
+        lower_red = np.array([red_min_h,  red_min_s,  red_min_v])
+        upper_red = np.array([red_max_h, red_max_s, red_max_v])
+
+        lower_white = np.array([white_min_h, white_min_s, white_min_v])
+        upper_white = np.array([white_max_h, white_max_s, white_max_v])
+        
+        mask = cv2.inRange(hsv, lower_white, upper_white)
+        mask_red = cv2.inRange(hsv2, lower_red, upper_red)
+
+        h, w, d = image.shape
+        self.w = w
+        search_top = 3*h/4
+        search_bot = 3*h/4 + 20
+        # cv2.imshow("window", mask)
+        mask[0:search_top, 0:w] = 0
+        mask[search_bot:h, 0:w] = 0
+        M = cv2.moments(mask)
+        if M['m00'] > 0:
+            cx = int(M['m10']/M['m00'])
+            cy = int(M['m01']/M['m00'])
+            self.cx = cx
+            self.cy = cy
+            cv2.circle(image, (cx, cy), 20, (0, 0, 255), -1)
+
+        cv2.imshow("window", mask_red)
+        mask_red[0:search_top, 0:w] = 0
+        mask_red[search_bot:h, 0:w] = 0
+        M_red = cv2.moments(mask_red)
+        if M_red['m00'] > 0:
+            print("?????", "found red")
+            self.found_red = True
+            cx_red = int(M_red['m10']/M_red['m00'])
+            cy_red = int(M_red['m01']/M_red['m00'])
+            cv2.circle(image, (cx, cy), 20, (0, 0, 205), -1)
+        else:
+            self.found_red = False
+            RED_VISIBLE = False
+
+        cv2.waitKey(3)
+
+    def execute(self, userdata):
+        global RED_VISIBLE, linear_vel, Kp, Kd, Ki
+        previous_error = 0
+        integral = 0
+        sleep_duration = rospy.Duration(self.dt, 0)
+
+        while not rospy.is_shutdown() and START:
+            if self.found_red and not RED_VISIBLE:
+                break
+            # BEGIN CONTROL
+            if self.cx is not None and self.w is not None:
+                error = float(self.cx - self.w/2.0)
+                integral += error * self.dt
+                derivative = (error - previous_error) / self.dt
+
+                self.twist.linear.x = linear_vel
+                self.twist.angular.z = - (Kp * error + Kd * derivative + Ki * integral)
+                self.cmd_vel_pub.publish(self.twist)
+
+                previous_error = error
+
+                rospy.sleep(sleep_duration)
+            # END CONTROL
         if not START:
             return "exit"
+        if self.found_red:
+            print("??????", RED_VISIBLE)
+            return "see_red"
 
 
 class Turn(State):
@@ -238,10 +342,37 @@ def joy_callback(msg):
     elif msg.buttons[1] == 1:  # button B
         START = False
 
+def dr_callback(config, level):
+    global Kp, Kd, Ki, linear_vel, white_max_h, white_max_s, white_max_v, white_min_h, white_min_s, white_min_v, red_max_h, red_max_s, red_max_v, red_min_h, red_min_s, red_min_v
 
+    Kp = config["Kp"]
+    Kd = config["Kd"]
+    Ki = config["Ki"]
+    linear_vel = config["linear_vel"]
+
+    white_max_h = config["white_max_h"]
+    white_max_s = config["white_max_s"]
+    white_max_v = config["white_max_v"]
+
+    white_min_h = config["white_min_h"]
+    white_min_s = config["white_min_s"]
+    white_min_v = config["white_min_v"]
+
+    red_max_h = config["red_max_h"]
+    red_max_s = config["red_max_s"]
+    red_max_v = config["red_max_v"]
+
+    red_min_h = config["red_min_h"]
+    red_min_s = config["red_min_s"]
+    red_min_v = config["red_min_v"]
+
+    return config
+    
 if __name__ == "__main__":
-    rospy.init_node('demo3')
+    rospy.init_node('comp2')
     rospy.Subscriber("/joy", Joy, callback=joy_callback)
+
+    srv = Server(Comp2Config, dr_callback)
 
     sm = StateMachine(outcomes=['success', 'failure'])
     with sm:
