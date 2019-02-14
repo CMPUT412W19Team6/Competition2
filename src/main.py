@@ -19,8 +19,11 @@ import math
 import random
 
 START = True
+FORWARD_CURRENT = 0
+TURN_CURRENT = 0
 POSE = [0, 0, 0, 0]
 turn_direction = 1
+SHAPE = None
 
 # TODO: update POSE from callback
 
@@ -44,7 +47,7 @@ class FollowLine(State):
     should follow the white line, until see full red
     """
 
-    def __init__(self):
+    def __init__(self, phase="1.0"):
         State.__init__(self, outcomes=["see_red", "exit", "failure"])
 
         self.bridge = cv_bridge.CvBridge()
@@ -60,22 +63,25 @@ class FollowLine(State):
         self.cx = None
         self.cy = None
         self.w = None
-        self.dt = 1.0 / 50
+        self.dt = 1.0 / 20.0
+        self.phase = phase
 
     def image_callback(self, msg):
         global RED_VISIBLE, red_area_threshold, white_max_h, white_max_s, white_max_v, white_min_h, white_min_s, white_min_v, red_max_h, red_max_s, red_max_v, red_min_h, red_min_s, red_min_v
 
         image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-        hsv2 = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-        
-        lower_red = np.array([red_min_h,  red_min_s,  red_min_v])
-        upper_red = np.array([red_max_h, red_max_s, red_max_v])
 
         lower_white = np.array([white_min_h, white_min_s, white_min_v])
         upper_white = np.array([white_max_h, white_max_s, white_max_v])
         
         mask = cv2.inRange(hsv, lower_white, upper_white)
+
+        hsv2 = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        
+        lower_red = np.array([red_min_h,  red_min_s,  red_min_v])
+        upper_red = np.array([red_max_h, red_max_s, red_max_v])
+        
         mask_red = cv2.inRange(hsv2, lower_red, upper_red)
 
         h, w, d = image.shape
@@ -92,9 +98,11 @@ class FollowLine(State):
             self.cx = cx
             self.cy = cy
             cv2.circle(image, (cx, cy), 20, (0, 0, 255), -1)
-
-        mask_red[0:search_top, 0:w] = 0
-
+        if self.phase == "2.1":
+            mask_red[h/2:h, 0:w] = 0
+        else:
+            mask_red[0:search_top, 0:w] = 0
+    
         im2, contours, hierarchy = cv2.findContours(mask_red,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
         total_area = sum([cv2.contourArea(x) for x in contours])
 
@@ -104,15 +112,22 @@ class FollowLine(State):
 
         if len(contours) == 0 and self.found_red:
             self.found_red = False
-            if self.red_area < red_area_threshold:
+            if self.red_area < red_area_threshold and self.red_area > 1000:
+                self.start_timeout = True
+            self.red_area = 0
+        elif self.phase == "2.1" and self.found_red:
+            self.found_red = False
+            if self.red_area < red_area_threshold and self.red_area > 1000:
                 self.start_timeout = True
             self.red_area = 0
 
-        cv2.imshow("window", image)
+        cv2.imshow("window", mask)
         cv2.waitKey(3)
 
     def execute(self, userdata):
-        global RED_VISIBLE, linear_vel, red_timeout, Kp, Kd, Ki
+        global RED_VISIBLE, FORWARD_CURRENT, TURN_CURRENT, linear_vel, red_timeout, Kp, Kd, Ki
+        FORWARD_CURRENT = 0.0
+        TURN_CURRENT = 0.0
         previous_error = 0
         integral = 0
         sleep_duration = rospy.Duration(self.dt, 0)
@@ -135,8 +150,14 @@ class FollowLine(State):
                 integral += error * self.dt
                 derivative = (error - previous_error) / self.dt
 
+                # FORWARD_CURRENT = linear_vel
+                # TURN_CURRENT = - (Kp * error + Kd * derivative + Ki * integral)
+                # move(FORWARD_CURRENT, TURN_CURRENT, self.cmd_vel_pub, 0.5)
+
                 self.twist.linear.x = linear_vel
-                self.twist.angular.z = - (Kp * error + Kd * derivative + Ki * integral)
+                self.twist.angular.z = - \
+                    (Kp * float(error) + Kd *
+                     derivative + Ki * integral)
                 self.cmd_vel_pub.publish(self.twist)
 
                 previous_error = error
@@ -181,6 +202,8 @@ class Turn(State):
             goal = start_pose[1]
         elif self.angle == 90:  # target is goal + turn_direction * 90
             goal = start_pose[1] + np.pi/2 * turn_direction
+        elif self.angle == 180:  # target is goal + turn_direction * 180
+            goal = start_pose[1] + np.pi * turn_direction
 
         goal = angles_lib.normalize_angle(goal)
 
@@ -278,9 +301,6 @@ class DepthCount(State):
                         if col_count > 30:
                             self.object_count += 1
                         col_count = 0
-        
-            # cv2.imshow("window", mask_red)
-       
 
 class Signal1(State):
     """
@@ -336,7 +356,10 @@ class FindGreen(State):
         State.__init__(self, outcomes=["success", "exit", "failure"])
 
     def execute(self, userdata):
-        global START
+        global START, SHAPE
+        SHAPE = "Square"
+
+        return "success"
 
         if not START:
             return "exit"
@@ -398,42 +421,75 @@ def joy_callback(msg):
 def dr_callback(config, level):
     global Kp, Kd, Ki, red_area_threshold, red_timeout, linear_vel, white_max_h, white_max_s, white_max_v, white_min_h, white_min_s, white_min_v, red_max_h, red_max_s, red_max_v, red_min_h, red_min_s, red_min_v
 
-    Kp = config["Kp"]
-    Kd = config["Kd"]
-    Ki = config["Ki"]
-    linear_vel = config["linear_vel"]
+    # Kp = config["Kp"]
+    # Kd = config["Kd"]
+    # Ki = config["Ki"]
+    # linear_vel = config["linear_vel"]
 
-    white_max_h = config["white_max_h"]
-    white_max_s = config["white_max_s"]
-    white_max_v = config["white_max_v"]
+    # white_max_h = config["white_max_h"]
+    # white_max_s = config["white_max_s"]
+    # white_max_v = config["white_max_v"]
 
-    white_min_h = config["white_min_h"]
-    white_min_s = config["white_min_s"]
-    white_min_v = config["white_min_v"]
+    # white_min_h = config["white_min_h"]
+    # white_min_s = config["white_min_s"]
+    # white_min_v = config["white_min_v"]
 
-    red_max_h = config["red_max_h"]
-    red_max_s = config["red_max_s"]
-    red_max_v = config["red_max_v"]
+    # red_max_h = config["red_max_h"]
+    # red_max_s = config["red_max_s"]
+    # red_max_v = config["red_max_v"]
 
-    red_min_h = config["red_min_h"]
-    red_min_s = config["red_min_s"]
-    red_min_v = config["red_min_v"]
+    # red_min_h = config["red_min_h"]
+    # red_min_s = config["red_min_s"]
+    # red_min_v = config["red_min_v"]
 
-    red_area_threshold = config["~red_area_threshold"]
-    red_timeout = rospy.Duration(config["red_timeout"])
+    # red_area_threshold = config["red_area_threshold"]
+    # red_timeout = rospy.Duration(config["red_timeout"])
 
     return config
+
+def move(forward_target, turn_target, pub, ramp_rate = 0.5):
+    """
+    modified version of move(forward, turn) from https://github.com/erichsueh/LifePoints-412-Comp1/blob/2e9fc4701c3cdc8e4ab8b04ca1da8581cfdf0c5b/robber_bot.py#L25
+    """
+    global FORWARD_CURRENT
+    global TURN_CURRENT
+
+    twist = Twist()
+    new_forward = ramped_vel(FORWARD_CURRENT, forward_target, ramp_rate)
+    new_turn = ramped_vel(TURN_CURRENT, turn_target, ramp_rate)
+    twist.linear.x = new_forward
+    twist.angular.z = new_turn
+    pub.publish(twist)
+
+    FORWARD_CURRENT = new_forward
+    TURN_CURRENT = new_turn
+
+
+def ramped_vel(v_prev, v_target, ramp_rate):
+    """
+    get the ramped velocity
+    from rom https://github.com/MandyMeindersma/Robotics/blob/master/Competitions/Comp1/Evasion.py
+    """
+    if abs(v_prev) > abs(v_target):
+        ramp_rate *= 2
+    step = ramp_rate * 0.1
+    sign = 1.0 if (v_target > v_prev) else -1.0
+    error = math.fabs(v_target - v_prev)
+    if error < step:  # we can get there in this time so we are done
+        return v_target
+    else:
+        return v_prev + sign*step
     
 if __name__ == "__main__":
     rospy.init_node('comp2')
 
-    Kp = rospy.get_param("~Kp", 1.0 / 400.0)
-    Kd = rospy.get_param("~Kd", 1.0 / 800.0)
+    Kp = rospy.get_param("~Kp", 1.0 / 500.0)
+    Kd = rospy.get_param("~Kd", 1.0 / 1000.0)
     Ki = rospy.get_param("~Ki", 0)
     linear_vel = rospy.get_param("~linear_vel", 0.2)
 
-    white_max_h = rospy.get_param("~white_max_h", 250)
-    white_max_s = rospy.get_param("~white_max_s", 60)
+    white_max_h = rospy.get_param("~white_max_h", 0)
+    white_max_s = rospy.get_param("~white_max_s", 0)
     white_max_v = rospy.get_param("~white_max_v", 256)
 
     white_min_h = rospy.get_param("~white_min_h", 0)
@@ -482,22 +538,20 @@ if __name__ == "__main__":
         # Phase 2 sub state
         phase2_sm = StateMachine(outcomes=['success', 'failure', 'exit'])
         with phase2_sm:
-            StateMachine.add("Finding2", FollowLine(), transitions={
+            StateMachine.add("Finding2", FollowLine("2.0"), transitions={
                 "see_red": "Turn21", "failure": "failure", "exit": "exit"})
-            StateMachine.add("Turn21", Turn(90), transitions={
+            StateMachine.add("Turn21", Turn(180), transitions={
                              "success": "FollowToEnd", "failure": "failure", "exit": "exit"})
-            StateMachine.add("FollowToEnd", FollowLine(), transitions={
-                             "see_red": "failure", 'failure': "FindGreenShape", "exit": "exit"})
+            StateMachine.add("FollowToEnd", FollowLine("2.1"), transitions={
+                             "see_red": "FindGreenShape", 'failure': "FindGreenShape", "exit": "exit"})
             StateMachine.add("FindGreenShape", FindGreen(), transitions={
                 "success": "TurnBack",  "failure": "failure", "exit": "exit"})
-            StateMachine.add("TurnBack", Turn(180), transitions={
+            StateMachine.add("TurnBack", Turn(90), transitions={
                 "success": "MoveForward", "failure": "failure", "exit": "exit"})
-            StateMachine.add("MoveForward", MoveForward(), transitions={
-                "no_more_red": "Turn22", "failure": "failure", "exit": "exit"})
+            StateMachine.add("MoveForward", FollowLine("2.2"), transitions={
+                "see_red": "Turn22", "failure": "failure", "exit": "exit"})
             StateMachine.add("Turn22", Turn(90), transitions={
-                "success": "FinishingPhase2", "failure": "failure", "exit": "exit"})  # turn left 90
-            StateMachine.add("FinishingPhase2", FollowLine(), transitions={
-                "see_red": "success", "failure": "failure", "exit": "exit"})
+                "success": "success", "failure": "failure", "exit": "exit"})  # turn left 90
         StateMachine.add("Phase2", phase2_sm, transitions={
             'success': 'Phase3', 'failure': 'failure', 'exit': 'Wait'})
 
