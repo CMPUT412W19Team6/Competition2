@@ -461,12 +461,12 @@ class CheckShape(State):
         self.shape = msg.data
 
     def execute(self, userdata):
-        global START, SHAPE_MATCHED, SHAPE,
+        global START, SHAPE_MATCHED, SHAPE
 
         self.start3_pub.publish(Bool(True))
         self.got_shape = False
         while not rospy.is_shutdown():
-            if self.got_shape or:
+            if self.got_shape:
                 break
             rospy.Rate(10).sleep()
 
