@@ -23,6 +23,7 @@ FORWARD_CURRENT = 0
 TURN_CURRENT = 0
 POSE = [0, 0, 0, 0]
 turn_direction = 1
+PHASE = None
 SHAPE = None
 
 # TODO: update POSE from callback
@@ -68,7 +69,7 @@ class FollowLine(State):
         self.phase = phase
 
     def image_callback(self, msg):
-        global RED_VISIBLE, red_area_threshold, white_max_h, white_max_s, white_max_v, white_min_h, white_min_s, white_min_v, red_max_h, red_max_s, red_max_v, red_min_h, red_min_s, red_min_v
+        global RED_VISIBLE, PHASE, red_area_threshold, white_max_h, white_max_s, white_max_v, white_min_h, white_min_s, white_min_v, red_max_h, red_max_s, red_max_v, red_min_h, red_min_s, red_min_v
 
         image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV_FULL)
@@ -99,15 +100,15 @@ class FollowLine(State):
             self.cx = cx
             self.cy = cy
             cv2.circle(image, (cx, cy), 20, (0, 0, 255), -1)
-        if self.phase == "2.1":
+        if PHASE == "2.1":
             mask_red[h/2:h, 0:w] = 0
         else:
             mask_red[0:search_top, 0:w] = 0
-
+        
         im2, contours, hierarchy = cv2.findContours(
             mask_red, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         total_area = sum([cv2.contourArea(x) for x in contours])
-
+        
         if len(contours) > 0:
             self.found_red = True
             self.red_area = max(self.red_area, total_area)
@@ -117,22 +118,23 @@ class FollowLine(State):
             if self.red_area < red_area_threshold and self.red_area > 1000:
                 self.start_timeout = True
             self.red_area = 0
-        elif self.phase == "2.1" and self.found_red:
+        elif PHASE == "2.1" and self.found_red:
             self.found_red = False
-            if self.red_area < red_area_threshold and self.red_area > 1000:
+            if self.red_area > 10000:
                 self.start_timeout = True
             self.red_area = 0
 
-        cv2.imshow("window", mask_red)
+        cv2.imshow("window", mask)
         cv2.waitKey(3)
 
     def execute(self, userdata):
-        global RED_VISIBLE, FORWARD_CURRENT, TURN_CURRENT, linear_vel, red_timeout, Kp, Kd, Ki
+        global RED_VISIBLE, PHASE, FORWARD_CURRENT, TURN_CURRENT, linear_vel, red_timeout, Kp, Kd, Ki
         FORWARD_CURRENT = 0.0
         TURN_CURRENT = 0.0
         previous_error = 0
         integral = 0
         sleep_duration = rospy.Duration(self.dt, 0)
+        PHASE = self.phase
 
         self.start_timeout = False
         start_time = None
@@ -154,7 +156,7 @@ class FollowLine(State):
 
                 # FORWARD_CURRENT = linear_vel
                 # TURN_CURRENT = - (Kp * error + Kd * derivative + Ki * integral)
-                # move(FORWARD_CURRENT, TURN_CURRENT, self.cmd_vel_pub, 0.5)
+                # move(FORWARD_CURRENT, TURN_CURRENT, self.cmd_vel_pub, 0.3)
 
                 self.twist.linear.x = linear_vel
                 self.twist.angular.z = - \
@@ -449,8 +451,8 @@ def dr_callback(config, level):
     red_min_s = config["red_min_s"]
     red_min_v = config["red_min_v"]
 
-    red_area_threshold = config["red_area_threshold"]
-    red_timeout = rospy.Duration(config["red_timeout"])
+    # red_area_threshold = config["red_area_threshold"]
+    # red_timeout = rospy.Duration(config["red_timeout"])
 
     return config
 
@@ -492,8 +494,8 @@ def ramped_vel(v_prev, v_target, ramp_rate):
 if __name__ == "__main__":
     rospy.init_node('comp2')
 
-    Kp = rospy.get_param("~Kp", 1.0 / 500.0)
-    Kd = rospy.get_param("~Kd", 1.0 / 1000.0)
+    Kp = rospy.get_param("~Kp", 1.0 / 400.0)
+    Kd = rospy.get_param("~Kd", 1.0 / 800.0)
     Ki = rospy.get_param("~Ki", 0)
     linear_vel = rospy.get_param("~linear_vel", 0.2)
 
@@ -503,7 +505,7 @@ if __name__ == "__main__":
 
     white_min_h = rospy.get_param("~white_min_h", 0)
     white_min_s = rospy.get_param("~white_min_s", 0)
-    white_min_v = rospy.get_param("~white_min_v", 252)
+    white_min_v = rospy.get_param("~white_min_v", 230)
 
     red_max_h = rospy.get_param("~red_max_h", 360)
     red_max_s = rospy.get_param("~red_max_s", 256)
@@ -513,9 +515,9 @@ if __name__ == "__main__":
     red_min_s = rospy.get_param("~red_min_s", 150)
     red_min_v = rospy.get_param("~red_min_v", 80)
 
-    red_timeout = rospy.Duration(rospy.get_param("~red_timeout", 0.5))
+    red_timeout = rospy.Duration(rospy.get_param("~red_timeout", 0.7))
 
-    red_area_threshold = rospy.get_param("~red_area_threshold", 12000)
+    red_area_threshold = rospy.get_param("~red_area_threshold", 11000)
 
     rospy.Subscriber("/joy", Joy, callback=joy_callback)
     srv = Server(Comp2Config, dr_callback)
