@@ -25,6 +25,7 @@ POSE = [0, 0, 0, 0]
 turn_direction = 1
 PHASE = None
 SHAPE = None
+SHAPE_MATCHED = False
 
 # TODO: update POSE from callback
 
@@ -67,6 +68,7 @@ class FollowLine(State):
         self.w = None
         self.dt = 1.0 / 20.0
         self.phase = phase
+        self.temporary_stop = False
 
     def image_callback(self, msg):
         global RED_VISIBLE, PHASE, red_area_threshold, white_max_h, white_max_s, white_max_v, white_min_h, white_min_s, white_min_v, red_max_h, red_max_s, red_max_v, red_min_h, red_min_s, red_min_v
@@ -117,10 +119,12 @@ class FollowLine(State):
             self.found_red = False
             if self.red_area < red_area_threshold and self.red_area > 1000:
                 self.start_timeout = True
+            elif self.red_area > red_area_threshold:
+                self.temporary_stop = True
             self.red_area = 0
         elif PHASE == "2.1" and self.found_red:
             self.found_red = False
-            if self.red_area > 10000:
+            if self.red_area > 8000:
                 self.start_timeout = True
             self.red_area = 0
 
@@ -137,9 +141,14 @@ class FollowLine(State):
         PHASE = self.phase
 
         self.start_timeout = False
+        self.temporary_stop = False
         start_time = None
 
         while not rospy.is_shutdown() and START:
+            if self.temporary_stop:
+                rospy.sleep(rospy.Duration(2.0))
+                self.temporary_stop = False
+
             if self.start_timeout and start_time is None:
                 start_time = rospy.Time.now()
 
@@ -209,6 +218,8 @@ class Turn(State):
             goal = start_pose[1] + np.pi/2 * turn_direction
         elif self.angle == 180:  # target is goal + turn_direction * 180
             goal = start_pose[1] + np.pi * turn_direction
+        elif self.angle == -90:  # target is goal + turn_direction * 270
+            goal = start_pose[1] + (3.0/2.0) * np.pi * turn_direction
 
         goal = angles_lib.normalize_angle(goal)
 
@@ -397,7 +408,9 @@ class CheckShape(State):
         State.__init__(self, outcomes=["matched", "exit", "failure"])
 
     def execute(self, userdata):
-        global START
+        global START, SHAPE_MATCHED
+
+        return "failure"
 
         if not START:
             return "exit"
@@ -413,6 +426,8 @@ class Signal3(State):
 
     def execute(self, userdata):
         global START
+
+        return "success"
 
         if not START:
             return "exit"
@@ -495,7 +510,7 @@ if __name__ == "__main__":
     rospy.init_node('comp2')
 
     Kp = rospy.get_param("~Kp", 1.0 / 400.0)
-    Kd = rospy.get_param("~Kd", 1.0 / 800.0)
+    Kd = rospy.get_param("~Kd", 1.0 / 700.0)
     Ki = rospy.get_param("~Ki", 0)
     linear_vel = rospy.get_param("~linear_vel", 0.2)
 
@@ -515,7 +530,7 @@ if __name__ == "__main__":
     red_min_s = rospy.get_param("~red_min_s", 150)
     red_min_v = rospy.get_param("~red_min_v", 80)
 
-    red_timeout = rospy.Duration(rospy.get_param("~red_timeout", 0.7))
+    red_timeout = rospy.Duration(rospy.get_param("~red_timeout", 0.3))
 
     red_area_threshold = rospy.get_param("~red_area_threshold", 11000)
 
@@ -569,20 +584,16 @@ if __name__ == "__main__":
         # Phase 3 sub state
         phase3_sm = StateMachine(outcomes=['success', 'failure', 'exit'])
         with phase3_sm:
-            StateMachine.add("Finding3", FollowLine(), transitions={
-                "see_red": "LookForSide31", "failure": "failure", "exit": "exit"})
-            StateMachine.add("LookForSide31", LookForSide(), transitions={
-                "see_half_red": "Turn31", "failure": "failure", "exit": "exit"})
-            StateMachine.add("Turn31", Turn(90), transitions={
+            StateMachine.add("Finding3", FollowLine("3.1"), transitions={
+                "see_red": "Turn31", "failure": "failure", "exit": "exit"})
+            StateMachine.add("Turn31", Turn(0), transitions={
                              "success": "CheckShape", "failure": "failure", "exit": "exit"})  # turn left 90
             StateMachine.add("CheckShape", CheckShape(), transitions={
                              "matched": "Signal3", "failure": "TurnRight", "exit": "exit"})
             StateMachine.add("Signal3", Signal3(), transitions={
-                             "success": "TurnRightMoveOn", "failure": "failure", "exit": "exit"})
+                             "success": "TurnRight", "failure": "failure", "exit": "exit"})
             StateMachine.add("TurnRight", Turn(-90), transitions={
-                             "success": "LookForSide31", "failure": "failure", "exit": "exit"})
-            StateMachine.add("TurnRightMoveOn", Turn(-90), transitions={
-                             "success": "success", "failure": "failure", "exit": "exit"})
+                             "success": "Finding3", "failure": "failure", "exit": "exit"})
 
         StateMachine.add("Phase3", phase3_sm, transitions={
             'success': 'Ending', 'failure': 'failure', 'exit': 'Wait'})
