@@ -396,7 +396,7 @@ def joy_callback(msg):
         START = False
 
 def dr_callback(config, level):
-    global Kp, Kd, Ki, linear_vel, white_max_h, white_max_s, white_max_v, white_min_h, white_min_s, white_min_v, red_max_h, red_max_s, red_max_v, red_min_h, red_min_s, red_min_v
+    global Kp, Kd, Ki, red_area_threshold, red_timeout, linear_vel, white_max_h, white_max_s, white_max_v, white_min_h, white_min_s, white_min_v, red_max_h, red_max_s, red_max_v, red_min_h, red_min_s, red_min_v
 
     Kp = config["Kp"]
     Kd = config["Kd"]
@@ -418,6 +418,9 @@ def dr_callback(config, level):
     red_min_h = config["red_min_h"]
     red_min_s = config["red_min_s"]
     red_min_v = config["red_min_v"]
+
+    red_area_threshold = config["~red_area_threshold"]
+    red_timeout = rospy.Duration(config["red_timeout"])
 
     return config
     
@@ -445,8 +448,7 @@ if __name__ == "__main__":
     red_min_s = rospy.get_param("~red_min_s", 150)
     red_min_v = rospy.get_param("~red_min_v", 80)
 
-    red_timeout = rospy.get_param("~red_timeout", 0.5)
-    red_timeout = rospy.Duration(red_timeout)
+    red_timeout = rospy.Duration(rospy.get_param("~red_timeout", 0.5))
 
     red_area_threshold = rospy.get_param("~red_area_threshold", 12000)
 
