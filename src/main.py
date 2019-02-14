@@ -9,7 +9,7 @@ import smach_ros
 from dynamic_reconfigure.server import Server
 from comp2.cfg import Comp2Config
 from nav_msgs.msg import Odometry
-from kobuki_msgs.msg import BumperEvent, Sound
+from kobuki_msgs.msg import BumperEvent, Sound, Led
 from tf.transformations import decompose_matrix, compose_matrix
 from ros_numpy import numpify
 from sensor_msgs.msg import Joy, LaserScan, Image
@@ -60,7 +60,7 @@ class FollowLine(State):
         self.cx = None
         self.cy = None
         self.w = None
-        self.dt = 1.0 / 20
+        self.dt = 1.0 / 50
 
     def image_callback(self, msg):
         global RED_VISIBLE, red_area_threshold, white_max_h, white_max_s, white_max_v, white_min_h, white_min_s, white_min_v, red_max_h, red_max_s, red_max_v, red_min_h, red_min_s, red_min_v
@@ -116,6 +116,8 @@ class FollowLine(State):
         previous_error = 0
         integral = 0
         sleep_duration = rospy.Duration(self.dt, 0)
+
+        self.start_timeout = False
         start_time = None
 
         while not rospy.is_shutdown() and START:
@@ -219,14 +221,66 @@ class DepthCount(State):
     """
 
     def __init__(self):
-        State.__init__(self, outcomes=["success", "exit", "failure"])
+        State.__init__(self, outcomes=["success", "exit", "failure"],
+                        output_keys=["object_count"])
+
+        self.bridge = cv_bridge.CvBridge()
+        self.image_sub = rospy.Subscriber('camera/rgb/image_raw',
+                                          Image, self.image_callback)
+
+        self.count_start = False
+        self.object_count = 0
 
     def execute(self, userdata):
         global START
 
+        while not rospy.is_shutdown() and START:
+            if self.count_start == False:
+                self.count_start = True
+
+            rospy.sleep(rospy.Duration(5.0))
+
+            userdata.object_count = self.object_count
+            return "success"
+
         if not START:
             return "exit"
 
+    def image_callback(self, msg):
+        global RED_VISIBLE, red_area_threshold, white_max_h, white_max_s, white_max_v, white_min_h, white_min_s, white_min_v, red_max_h, red_max_s, red_max_v, red_min_h, red_min_s, red_min_v
+
+        if self.count_start:
+            image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+            hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+
+            lower_red = np.array([red_min_h,  red_min_s,  red_min_v])
+            upper_red = np.array([red_max_h, red_max_s, red_max_v])
+
+            mask_red = cv2.inRange(hsv, lower_red, upper_red)
+
+            col_max = mask_red.max(axis=0)
+
+            col_start = False
+            col_count = 0
+
+            self.object_count = 0
+
+            for val in col_max:
+                if val > 50:
+                    if not col_start:
+                        col_start = True
+                        col_count = 1
+                    else:
+                        col_count += 1
+                else:
+                    if col_start:
+                        col_start = False
+                        if col_count > 30:
+                            self.object_count += 1
+                        col_count = 0
+        
+            # cv2.imshow("window", mask_red)
+       
 
 class Signal1(State):
     """
@@ -234,11 +288,26 @@ class Signal1(State):
     """
 
     def __init__(self):
-        State.__init__(self, outcomes=["success", "exit", "failure"])
+        State.__init__(self, outcomes=["success", "exit", "failure"],
+                        input_keys=["object_count"])
+        self.led1_pub = rospy.Publisher("/mobile_base/commands/led1", Led, queue_size=1)
+        self.led2_pub = rospy.Publisher("/mobile_base/commands/led2", Led, queue_size=1)
 
     def execute(self, userdata):
         global START
 
+        print userdata.object_count
+
+        if START and not rospy.is_shutdown():
+            if userdata.object_count == 1:
+                self.led1_pub.publish(Led(1))
+            elif userdata.object_count == 2:
+                self.led2_pub.publish(Led(1))
+            elif userdata.object_count == 3:
+                self.led1_pub.publish(Led(1))
+                self.led2_pub.publish(Led(1))
+
+            return "success"
         if not START:
             return "exit"
 
@@ -355,8 +424,8 @@ def dr_callback(config, level):
 if __name__ == "__main__":
     rospy.init_node('comp2')
 
-    Kp = rospy.get_param("~Kp", 1.0 / 500.0)
-    Kd = rospy.get_param("~Kd", 1.0 / 1000.0)
+    Kp = rospy.get_param("~Kp", 1.0 / 400.0)
+    Kd = rospy.get_param("~Kd", 1.0 / 800.0)
     Ki = rospy.get_param("~Ki", 0)
     linear_vel = rospy.get_param("~linear_vel", 0.2)
 
@@ -403,7 +472,7 @@ if __name__ == "__main__":
                              "success": "MakeSignal1", "failure": "failure", "exit": "exit"})
             StateMachine.add("MakeSignal1", Signal1(), transitions={
                              "success": "Turn12", "failure": "failure", "exit": "exit"})
-            StateMachine.add("Turn12", Turn(-90), transitions={
+            StateMachine.add("Turn12", Turn(0), transitions={
                 "success": "success", "failure": "failure", "exit": "exit"})  # turn right 90 degrees
         StateMachine.add("Phase1", phase1_sm, transitions={
                          'success': 'Phase2', 'failure': 'failure', 'exit': 'Wait'})
@@ -412,9 +481,7 @@ if __name__ == "__main__":
         phase2_sm = StateMachine(outcomes=['success', 'failure', 'exit'])
         with phase2_sm:
             StateMachine.add("Finding2", FollowLine(), transitions={
-                "see_red": "LookForSide2", "failure": "failure", "exit": "exit"})
-            StateMachine.add("LookForSide2", LookForSide(), transitions={
-                "see_half_red": "Turn21", "failure": "failure", "exit": "exit"})
+                "see_red": "Turn21", "failure": "failure", "exit": "exit"})
             StateMachine.add("Turn21", Turn(90), transitions={
                              "success": "FollowToEnd", "failure": "failure", "exit": "exit"})
             StateMachine.add("FollowToEnd", FollowLine(), transitions={
