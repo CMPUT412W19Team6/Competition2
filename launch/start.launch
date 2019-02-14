@@ -4,9 +4,11 @@
 
     <node pkg="joy" type="joy_node" name="joy_node"/>
 
-    <node pkg="comp2" type="main.py" name="comp2" output="screen">
+    <node pkg="comp2" type="main.py" name="comp2" output="screen"/>
+    <node pkg="comp2" type="count2.py" name="count2" output="screen"></node>
+    <node pkg="comp2" type="recong3.py" name="recong3" output="screen"></node>
         
-    </node>
+    
 
     <node pkg="smach_viewer" type="smach_viewer.py" name="smach"/>
 </launch>

@@ -222,6 +222,8 @@ class Turn(State):
             goal = start_pose[1] + np.pi * turn_direction
         elif self.angle == -90:  # target is goal + turn_direction * 270
             goal = start_pose[1] - np.pi/2 * turn_direction
+        elif self.angle == -100:  # target is goal + turn_direction * 270
+            goal = start_pose[1] - 5*np.pi/9 * turn_direction
 
         goal = angles_lib.normalize_angle(goal)
 
@@ -231,7 +233,7 @@ class Turn(State):
 
         direction = turn_direction
 
-        if 2 * np.pi - angles_lib.normalize_angle_positive(goal) < angles_lib.normalize_angle_positive(goal):
+        if 2 * np.pi - angles_lib.normalize_angle_positive(goal) < angles_lib.normalize_angle_positive(goal) or self.angle == 0:
             direction = turn_direction * -1
 
         while not rospy.is_shutdown():
@@ -639,7 +641,9 @@ if __name__ == "__main__":
             StateMachine.add("Turn21", Turn(180), transitions={
                              "success": "FollowToEnd", "failure": "failure", "exit": "exit"})
             StateMachine.add("FollowToEnd", FollowLine("2.1"), transitions={
-                             "see_red": "FindGreenShape", 'failure': "FindGreenShape", "exit": "exit"})
+                             "see_red": "TurnLeftAbit", 'failure': "FindGreenShape", "exit": "exit"})
+            StateMachine.add("TurnLeftAbit", Turn(-100), transitions={
+                             "success": "FindGreenShape", "failure": "failure", "exit": "exit"})
             StateMachine.add("FindGreenShape", FindGreen(), transitions={
                 "success": "TurnBack",  "failure": "failure", "exit": "exit"})
             StateMachine.add("TurnBack", Turn(90), transitions={
