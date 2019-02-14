@@ -139,7 +139,7 @@ class FollowLine(State):
                 self.start_timeout = True
             self.red_area = 0
 
-        cv2.imshow("window", mask_green)
+        cv2.imshow("window", mask)
         cv2.waitKey(3)
 
     def execute(self, userdata):
@@ -154,6 +154,13 @@ class FollowLine(State):
         self.start_timeout = False
         self.temporary_stop = False
         start_time = None
+
+        # if self.phase == "2.1":
+        #     Kp = 1.0 / 350.0
+        #     Kd = 1.0 / 700.0
+        # else:
+        #     Kp = 1.0 / 400.0
+        #     Kd = 1.0 / 700.0
 
         while not rospy.is_shutdown() and START:
             if self.temporary_stop:
@@ -371,6 +378,7 @@ class DepthCount(State):
         global RED_VISIBLE, red_area_threshold, white_max_h, white_max_s, white_max_v, white_min_h, white_min_s, white_min_v, red_max_h, red_max_s, red_max_v, red_min_h, red_min_s, red_min_v
 
         if self.count_start:
+            rospy.sleep(rospy.Duration(2))
             image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
             hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
@@ -380,7 +388,7 @@ class DepthCount(State):
             mask_red = cv2.inRange(hsv, lower_red, upper_red)
             self.object_count = 0
 
-            cv2.imshow("window", mask_red)
+            # cv2.imshow("window", mask_red)
             gray = mask_red
             blurred = cv2.GaussianBlur(gray, (5, 5), 0)
             thresh = cv2.threshold(blurred, 60, 255, cv2.THRESH_BINARY)[1]
@@ -730,7 +738,7 @@ if __name__ == "__main__":
             StateMachine.add("TurnLeftAbit", Turn(-100), transitions={
                              "success": "Backup", "failure": "failure", "exit": "exit"})
             StateMachine.add("Backup", Translate(
-                distance=0.15, linear=-0.2), transitions={"success": "FindGreenShape"})
+                distance=0.05, linear=-0.2), transitions={"success": "FindGreenShape"})
             StateMachine.add("FindGreenShape", FindGreen(), transitions={
                 "success": "TurnBack",  "failure": "failure", "exit": "exit"})
             StateMachine.add("TurnBack", Turn(90), transitions={
