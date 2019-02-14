@@ -73,7 +73,7 @@ class FollowLine(State):
         self.temporary_stop = False
 
     def image_callback(self, msg):
-        global RED_VISIBLE, PHASE, red_area_threshold, white_max_h, white_max_s, white_max_v, white_min_h, white_min_s, white_min_v, red_max_h, red_max_s, red_max_v, red_min_h, red_min_s, red_min_v
+        global RED_VISIBLE, PHASE, red_area_threshold, white_max_h, white_max_s, white_max_v, white_min_h, white_min_s, white_min_v, red_max_h, red_max_s, red_max_v, red_min_h, red_min_s, red_min_v, green_max_h, green_max_s, green_max_v, green_min_h, green_min_s, green_min_v
 
         image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV_FULL)
@@ -90,6 +90,11 @@ class FollowLine(State):
 
         mask_red = cv2.inRange(hsv2, lower_red, upper_red)
 
+        lower_green = np.array([green_min_h, green_min_s, green_min_v])
+        upper_green = np.array([green_max_h, green_max_s, green_max_v])
+
+        mask_green = cv2.inRange(hsv, lower_green, upper_green)
+
         h, w, d = image.shape
         self.w = w
         search_top = 3*h/4
@@ -105,14 +110,19 @@ class FollowLine(State):
             self.cy = cy
             cv2.circle(image, (cx, cy), 20, (0, 0, 255), -1)
         if PHASE == "2.1":
+            mask_green[h/2:h, 0:w] = 0
             mask_red[h/2:h, 0:w] = 0
+            im2, contours, hierarchy = cv2.findContours(mask_green, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            total_area = sum([cv2.contourArea(x) for x in contours])
+            im2, contours, hierarchy = cv2.findContours(mask_red, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            total_area += sum([cv2.contourArea(x) for x in contours])
         else:
             mask_red[0:search_top, 0:w] = 0
+            im2, contours, hierarchy = cv2.findContours(mask_red, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            total_area = sum([cv2.contourArea(x) for x in contours])
 
-        im2, contours, hierarchy = cv2.findContours(
-            mask_red, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        total_area = sum([cv2.contourArea(x) for x in contours])
-
+        # print total_area
+        
         if len(contours) > 0:
             self.found_red = True
             self.red_area = max(self.red_area, total_area)
@@ -126,11 +136,11 @@ class FollowLine(State):
             self.red_area = 0
         elif PHASE == "2.1" and self.found_red:
             self.found_red = False
-            if self.red_area > 8000:
+            if self.red_area > 1000:
                 self.start_timeout = True
             self.red_area = 0
 
-        cv2.imshow("window", mask)
+        cv2.imshow("window", mask_red)
         cv2.waitKey(3)
 
     def execute(self, userdata):
@@ -233,7 +243,7 @@ class Turn(State):
 
         direction = turn_direction
 
-        if 2 * np.pi - angles_lib.normalize_angle_positive(goal) < angles_lib.normalize_angle_positive(goal) or self.angle == 0:
+        if self.angle == 0:
             direction = turn_direction * -1
 
         while not rospy.is_shutdown():
@@ -335,20 +345,26 @@ class Signal1(State):
             "/mobile_base/commands/led1", Led, queue_size=1)
         self.led2_pub = rospy.Publisher(
             "/mobile_base/commands/led2", Led, queue_size=1)
+        self.sound_pub = rospy.Publisher(
+            "mobile_base/commands/sound", Sound, queue_size=1)
 
     def execute(self, userdata):
         global START
 
-        print userdata.object_count
-
         if START and not rospy.is_shutdown():
             if userdata.object_count == 1:
                 self.led1_pub.publish(Led(1))
+                self.sound_pub.publish(Sound(0))
             elif userdata.object_count == 2:
                 self.led2_pub.publish(Led(1))
+                self.sound_pub.publish(Sound(0))
+                self.sound_pub.publish(Sound(1))
             elif userdata.object_count == 3:
                 self.led1_pub.publish(Led(1))
                 self.led2_pub.publish(Led(1))
+                self.sound_pub.publish(Sound(0))
+                self.sound_pub.publish(Sound(1))
+                self.sound_pub.publish(Sound(2))
 
             return "success"
         if not START:
@@ -392,12 +408,12 @@ class FindGreen(State):
 
     def shapeCallback(self, msg):
         global SHAPE
-        print("GOT SHAPE", msg)
+        # print("GOT SHAPE", msg)
         SHAPE = msg.data
         self.done_shape = True
 
     def countCallback(self, msg):
-        print("GOT COUNT", msg)
+        # print("GOT COUNT", msg)
         if msg.data == 1:
             self.led1_pub.publish(Led(1))
         elif msg.data == 2:
@@ -415,7 +431,7 @@ class FindGreen(State):
         self.led2_pub.publish(Led(0))
 
         self.count2_pub.publish(Bool(data=True))
-        print("published")
+        # print("published")
 
         while not rospy.is_shutdown():
             if self.done_shape and self.done_count:
@@ -459,7 +475,7 @@ class CheckShape(State):
     def shapeCallback(self, msg):
 
         self.got_shape = True
-        print("GOT SHAPE=", msg.data)
+        # print("GOT SHAPE=", msg.data)
         self.shape = msg.data
 
     def execute(self, userdata):
@@ -479,7 +495,7 @@ class CheckShape(State):
             return "matched"
 
         else:
-            print("failed?", self.shape)
+            # print("failed?", self.shape)
             return "failure"
         if not START:
             return "exit"
@@ -515,7 +531,7 @@ def joy_callback(msg):
 
 
 def dr_callback(config, level):
-    global Kp, Kd, Ki, red_area_threshold, red_timeout, linear_vel, white_max_h, white_max_s, white_max_v, white_min_h, white_min_s, white_min_v, red_max_h, red_max_s, red_max_v, red_min_h, red_min_s, red_min_v
+    global Kp, Kd, Ki, red_area_threshold, red_timeout, linear_vel, green_max_h, green_max_s, green_max_v, green_min_h, green_min_s, green_min_v, white_max_h, white_max_s, white_max_v, white_min_h, white_min_s, white_min_v, red_max_h, red_max_s, red_max_v, red_min_h, red_min_s, red_min_v
 
     # Kp = config["Kp"]
     # Kd = config["Kd"]
@@ -537,6 +553,14 @@ def dr_callback(config, level):
     red_min_h = config["red_min_h"]
     red_min_s = config["red_min_s"]
     red_min_v = config["red_min_v"]
+
+    green_max_h = config["green_max_h"]
+    green_max_s = config["green_max_s"]
+    green_max_v = config["green_max_v"]
+
+    green_min_h = config["green_min_h"]
+    green_min_s = config["green_min_s"]
+    green_min_v = config["green_min_v"]
 
     # red_area_threshold = config["red_area_threshold"]
     # red_timeout = rospy.Duration(config["red_timeout"])
@@ -594,13 +618,21 @@ if __name__ == "__main__":
     white_min_s = rospy.get_param("~white_min_s", 0)
     white_min_v = rospy.get_param("~white_min_v", 230)
 
-    red_max_h = rospy.get_param("~red_max_h", 360)
-    red_max_s = rospy.get_param("~red_max_s", 256)
-    red_max_v = rospy.get_param("~red_max_v", 225)
+    red_max_h = rospy.get_param("~red_max_h", 208.8)
+    red_max_s = rospy.get_param("~red_max_s", 290)
+    red_max_v = rospy.get_param("~red_max_v", 284.4)
 
-    red_min_h = rospy.get_param("~red_min_h", 150)
-    red_min_s = rospy.get_param("~red_min_s", 150)
-    red_min_v = rospy.get_param("~red_min_v", 80)
+    red_min_h = rospy.get_param("~red_min_h", 140.4)
+    red_min_s = rospy.get_param("~red_min_s", 136.8)
+    red_min_v = rospy.get_param("~red_min_v", 108.0)
+
+    green_max_h = rospy.get_param("~green_max_h", 108.0)
+    green_max_s = rospy.get_param("~green_max_s", 140.4)
+    green_max_v = rospy.get_param("~green_max_v", 248.4)
+
+    green_min_h = rospy.get_param("~green_min_h", 75.6)
+    green_min_s = rospy.get_param("~green_min_s", 68.4)
+    green_min_v = rospy.get_param("~green_min_v", 129.6)
 
     red_timeout = rospy.Duration(rospy.get_param("~red_timeout", 0.5))
 

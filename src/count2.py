@@ -35,7 +35,6 @@ def image_callback(msg):
         # mask[0:search_top, 0:w] = 0
         mask[search_bot:h, 0:w] = 0
         maskGreen[search_bot:h, 0:w] = 0
-        M = cv2.moments(mask)
 
         getShape(maskGreen)
         count = countRed(mask)
@@ -95,7 +94,7 @@ def getShape(image):
 
 
 def ready_callback(msg):
-    global start
+    global start, finished
     global start_time, end_time
     print("ready recieved", msg, msg.data)
     if msg.data and not finished:
