@@ -17,6 +17,7 @@ import numpy as np
 import angles as angles_lib
 import math
 import random
+from std_msgs.msg import Bool, String, Int32
 
 START = True
 FORWARD_CURRENT = 0
@@ -104,11 +105,11 @@ class FollowLine(State):
             mask_red[h/2:h, 0:w] = 0
         else:
             mask_red[0:search_top, 0:w] = 0
-        
+
         im2, contours, hierarchy = cv2.findContours(
             mask_red, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         total_area = sum([cv2.contourArea(x) for x in contours])
-        
+
         if len(contours) > 0:
             self.found_red = True
             self.red_area = max(self.red_area, total_area)
@@ -362,15 +363,51 @@ class FindGreen(State):
 
     def __init__(self):
         State.__init__(self, outcomes=["success", "exit", "failure"])
+        self.shape2_sub = rospy.Subscriber(
+            "/shape2", String, self.shapeCallback)
+        self.count2_sub = rospy.Subscriber(
+            "/count2", Int32, self.countCallback)
+        self.done_shape = False
+        self.done_count = False
+
+        self.count2_pub = rospy.Publisher("start2", Bool, queue_size=1)
+        self.led1_pub = rospy.Publisher(
+            "/mobile_base/commands/led1", Led, queue_size=1)
+        self.led2_pub = rospy.Publisher(
+            "/mobile_base/commands/led2", Led, queue_size=1)
+
+    def shapeCallback(self, msg):
+        global SHAPE
+        print("GOT SHAPE", msg)
+        SHAPE = msg.data
+        self.done_shape = True
+
+    def countCallback(self, msg):
+        print("GOT COUNT", msg)
+        if msg.data == 1:
+            self.led1_pub.publish(Led(1))
+        elif msg.data == 2:
+            self.led2_pub.publish(Led(1))
+        elif msg.data == 3:
+            self.led1_pub.publish(Led(1))
+            self.led2_pub.publish(Led(1))
+
+        self.done_count = True
 
     def execute(self, userdata):
         global START, SHAPE
-        SHAPE = "Square"
 
-        return "success"
+        self.count2_pub.publish(Bool(data=True))
+        print("published")
+
+        while not rospy.is_shutdown():
+            if self.done_shape and self.done_count:
+                break
+            rospy.Rate(10).sleep()
 
         if not START:
             return "exit"
+        return "success"
 
 
 class MoveForward(State):
@@ -515,7 +552,7 @@ if __name__ == "__main__":
     red_min_s = rospy.get_param("~red_min_s", 150)
     red_min_v = rospy.get_param("~red_min_v", 80)
 
-    red_timeout = rospy.Duration(rospy.get_param("~red_timeout", 0.7))
+    red_timeout = rospy.Duration(rospy.get_param("~red_timeout", 0.5))
 
     red_area_threshold = rospy.get_param("~red_area_threshold", 11000)
 
