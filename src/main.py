@@ -27,6 +27,7 @@ SHAPE = None
 
 # TODO: update POSE from callback
 
+
 class WaitForButton(State):
     def __init__(self):
         State.__init__(self, outcomes=["pressed", "exit"])
@@ -70,25 +71,25 @@ class FollowLine(State):
         global RED_VISIBLE, red_area_threshold, white_max_h, white_max_s, white_max_v, white_min_h, white_min_s, white_min_v, red_max_h, red_max_s, red_max_v, red_min_h, red_min_s, red_min_v
 
         image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV_FULL)
 
         lower_white = np.array([white_min_h, white_min_s, white_min_v])
         upper_white = np.array([white_max_h, white_max_s, white_max_v])
-        
+
         mask = cv2.inRange(hsv, lower_white, upper_white)
 
         hsv2 = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-        
+
         lower_red = np.array([red_min_h,  red_min_s,  red_min_v])
         upper_red = np.array([red_max_h, red_max_s, red_max_v])
-        
+
         mask_red = cv2.inRange(hsv2, lower_red, upper_red)
 
         h, w, d = image.shape
         self.w = w
         search_top = 3*h/4
         search_bot = 3*h/4 + 20
-        
+
         mask[0:search_top, 0:w] = 0
         mask[search_bot:h, 0:w] = 0
         M = cv2.moments(mask)
@@ -102,8 +103,9 @@ class FollowLine(State):
             mask_red[h/2:h, 0:w] = 0
         else:
             mask_red[0:search_top, 0:w] = 0
-    
-        im2, contours, hierarchy = cv2.findContours(mask_red,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+
+        im2, contours, hierarchy = cv2.findContours(
+            mask_red, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         total_area = sum([cv2.contourArea(x) for x in contours])
 
         if len(contours) > 0:
@@ -121,7 +123,7 @@ class FollowLine(State):
                 self.start_timeout = True
             self.red_area = 0
 
-        cv2.imshow("window", mask)
+        cv2.imshow("window", mask_red)
         cv2.waitKey(3)
 
     def execute(self, userdata):
@@ -166,6 +168,7 @@ class FollowLine(State):
             # END CONTROL
         if not START:
             return "exit"
+
 
 class Turn(State):
     """
@@ -245,7 +248,7 @@ class DepthCount(State):
 
     def __init__(self):
         State.__init__(self, outcomes=["success", "exit", "failure"],
-                        output_keys=["object_count"])
+                       output_keys=["object_count"])
 
         self.bridge = cv_bridge.CvBridge()
         self.image_sub = rospy.Subscriber('camera/rgb/image_raw',
@@ -302,6 +305,7 @@ class DepthCount(State):
                             self.object_count += 1
                         col_count = 0
 
+
 class Signal1(State):
     """
     Make sound and LED lights based on count for phase 1
@@ -309,9 +313,11 @@ class Signal1(State):
 
     def __init__(self):
         State.__init__(self, outcomes=["success", "exit", "failure"],
-                        input_keys=["object_count"])
-        self.led1_pub = rospy.Publisher("/mobile_base/commands/led1", Led, queue_size=1)
-        self.led2_pub = rospy.Publisher("/mobile_base/commands/led2", Led, queue_size=1)
+                       input_keys=["object_count"])
+        self.led1_pub = rospy.Publisher(
+            "/mobile_base/commands/led1", Led, queue_size=1)
+        self.led2_pub = rospy.Publisher(
+            "/mobile_base/commands/led2", Led, queue_size=1)
 
     def execute(self, userdata):
         global START
@@ -418,6 +424,7 @@ def joy_callback(msg):
     elif msg.buttons[1] == 1:  # button B
         START = False
 
+
 def dr_callback(config, level):
     global Kp, Kd, Ki, red_area_threshold, red_timeout, linear_vel, white_max_h, white_max_s, white_max_v, white_min_h, white_min_s, white_min_v, red_max_h, red_max_s, red_max_v, red_min_h, red_min_s, red_min_v
 
@@ -434,20 +441,21 @@ def dr_callback(config, level):
     # white_min_s = config["white_min_s"]
     # white_min_v = config["white_min_v"]
 
-    # red_max_h = config["red_max_h"]
-    # red_max_s = config["red_max_s"]
-    # red_max_v = config["red_max_v"]
+    red_max_h = config["red_max_h"]
+    red_max_s = config["red_max_s"]
+    red_max_v = config["red_max_v"]
 
-    # red_min_h = config["red_min_h"]
-    # red_min_s = config["red_min_s"]
-    # red_min_v = config["red_min_v"]
+    red_min_h = config["red_min_h"]
+    red_min_s = config["red_min_s"]
+    red_min_v = config["red_min_v"]
 
-    # red_area_threshold = config["red_area_threshold"]
-    # red_timeout = rospy.Duration(config["red_timeout"])
+    red_area_threshold = config["red_area_threshold"]
+    red_timeout = rospy.Duration(config["red_timeout"])
 
     return config
 
-def move(forward_target, turn_target, pub, ramp_rate = 0.5):
+
+def move(forward_target, turn_target, pub, ramp_rate=0.5):
     """
     modified version of move(forward, turn) from https://github.com/erichsueh/LifePoints-412-Comp1/blob/2e9fc4701c3cdc8e4ab8b04ca1da8581cfdf0c5b/robber_bot.py#L25
     """
@@ -479,7 +487,8 @@ def ramped_vel(v_prev, v_target, ramp_rate):
         return v_target
     else:
         return v_prev + sign*step
-    
+
+
 if __name__ == "__main__":
     rospy.init_node('comp2')
 
@@ -488,13 +497,13 @@ if __name__ == "__main__":
     Ki = rospy.get_param("~Ki", 0)
     linear_vel = rospy.get_param("~linear_vel", 0.2)
 
-    white_max_h = rospy.get_param("~white_max_h", 0)
-    white_max_s = rospy.get_param("~white_max_s", 0)
+    white_max_h = rospy.get_param("~white_max_h", 255)
+    white_max_s = rospy.get_param("~white_max_s", 72)
     white_max_v = rospy.get_param("~white_max_v", 256)
 
     white_min_h = rospy.get_param("~white_min_h", 0)
     white_min_s = rospy.get_param("~white_min_s", 0)
-    white_min_v = rospy.get_param("~white_min_v", 230)
+    white_min_v = rospy.get_param("~white_min_v", 252)
 
     red_max_h = rospy.get_param("~red_max_h", 360)
     red_max_s = rospy.get_param("~red_max_s", 256)
