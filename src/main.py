@@ -184,6 +184,72 @@ class FollowLine(State):
             return "exit"
 
 
+def calc_delta_vector(start_heading, distance):
+    dx = distance * np.cos(start_heading)
+    dy = distance * np.sin(start_heading)
+    return np.array([dx, dy])
+
+
+def check_forward_distance(forward_vec, start_pos, current_pos):
+    current = current_pos - start_pos
+    # vector projection (project current onto forward_vec)
+    delta = np.dot(current, forward_vec) / \
+        np.dot(forward_vec, forward_vec) * forward_vec
+    dist = np.sqrt(delta.dot(delta))
+    return dist
+
+
+class Translate(State):
+    def __init__(self, distance=0.15, linear=-0.2):
+        State.__init__(self, outcomes=["success"])
+        self.tb_position = None
+        self.tb_rot = None
+        self.distance = distance
+        self.COLLISION = False
+        self.linear = linear
+
+        # pub / sub
+        self.cmd_pub = rospy.Publisher(
+            "cmd_vel_mux/input/teleop", Twist, queue_size=1)
+        rospy.Subscriber("odom", Odometry, callback=self.odom_callback)
+
+    def odom_callback(self, msg):
+        tb_pose = msg.pose.pose
+        __, __, angles, position, __ = decompose_matrix(numpify(tb_pose))
+        self.tb_position = position[0:2]
+        self.tb_rot = angles
+
+    def execute(self, userdata):
+        global turn_direction
+        global START
+        if not START:
+            return 'quit'
+        self.COLLISION = False
+        start_heading = self.tb_rot[2]
+        start_pos = self.tb_position
+        forward_vec = calc_delta_vector(start_heading, self.distance)
+        rate = rospy.Rate(30)
+
+        while not rospy.is_shutdown():
+            dist = check_forward_distance(
+                forward_vec, start_pos, self.tb_position)
+            if dist > self.distance:
+                return "success"
+            if self.linear > 0 and self.COLLISION:
+                msg = Twist()
+                msg.linear.x = 0.0
+                self.cmd_pub.publish(msg)
+                self.COLLISION = False
+                # hit something while driving perpendicular so swap turn direction
+                turn_direction = -1 * turn_direction
+                return "collision"
+
+            msg = Twist()
+            msg.linear.x = self.linear
+            self.cmd_pub.publish(msg)
+            rate.sleep()
+
+
 class Turn(State):
     """
     Turning a specific angle, based on Sean's example code from demo2
@@ -654,7 +720,9 @@ if __name__ == "__main__":
             StateMachine.add("FollowToEnd", FollowLine("2.1"), transitions={
                              "see_red": "TurnLeftAbit", 'failure': "FindGreenShape", "exit": "exit"})
             StateMachine.add("TurnLeftAbit", Turn(-100), transitions={
-                             "success": "FindGreenShape", "failure": "failure", "exit": "exit"})
+                             "success": "Backup", "failure": "failure", "exit": "exit"})
+            StateMachine.add("Backup", Translate(
+                distance=0.15, linear=-0.2), transitions={"success": "FindGreenShape"})
             StateMachine.add("FindGreenShape", FindGreen(), transitions={
                 "success": "TurnBack",  "failure": "failure", "exit": "exit"})
             StateMachine.add("TurnBack", Turn(90), transitions={
