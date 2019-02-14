@@ -8,12 +8,12 @@ import imutils
 from sensor_msgs.msg import Joy, LaserScan, Image
 from std_msgs.msg import Bool, Int32, String
 
-start = True
+start = False
 shape_count = {"circle": 0, "triangle": 0, "square": 0}
 
 
 def image_callback(msg):
-    global bridge, start, finished
+    global bridge, start
     global shape_count, end_time, shape_pub
     if start:
         image = bridge.imgmsg_to_cv2(msg, desired_encoding='rgb8')
@@ -28,7 +28,7 @@ def image_callback(msg):
         search_top = 1*h/2
         search_bot = 3*h/4 + 20
 
-        mask[0:search_top, 0:w] = 0
+        # mask[0:search_top, 0:w] = 0
         # mask[search_bot:h, 0:w] = 0
         M = cv2.moments(mask)
 
@@ -39,13 +39,13 @@ def image_callback(msg):
         if end_time < rospy.Time.now():
             shape = max(shape_count, key=lambda k: shape_count[k])
             print("Found SHAPE=", shape)
-            shape_pub.publish(String(shape))
 
             shape_count["triangle"] = 0
             shape_count["square"] = 0
             shape_count["circle"] = 0
             start = False
-            finished = True
+
+            shape_pub.publish(String(shape))
 
 
 def countRed(image):
@@ -73,6 +73,7 @@ def getShape(image):
                             cv2.CHAIN_APPROX_SIMPLE)
     cnts = imutils.grab_contours(cnts)
 
+    print("Start get shape")
     if len(cnts) > 0:
         index = np.argmax(np.array([cv2.contourArea(c) for c in cnts]))
         c = cnts[index]
@@ -81,12 +82,13 @@ def getShape(image):
 
         if len(approx) <= 3:
             shape_count["triangle"] += 1
-        if 4 <= len(approx) and len(approx) <= 5:
+        if 4 <= len(approx):
             shape_count["square"] += 1
-        if len(approx) > 5:
+        if len(approx) >= 5:
             shape_count["circle"] += 1
         # print(shape, len(cnts), cv2.contourArea(c))
         print(len(approx), cv2.contourArea(c))
+    print("End get shape")
 
 
 def ready_callback(msg):
@@ -95,7 +97,7 @@ def ready_callback(msg):
     if msg.data:
         start = True
         start_time = rospy.Time.now()
-        end_time = rospy.Time.now() + rospy.Duration(5)
+        end_time = rospy.Time.now() + rospy.Duration(6)
 
 
 rospy.init_node("recong3")
@@ -104,6 +106,6 @@ image_sub = rospy.Subscriber('/camera/rgb/image_raw', Image, image_callback)
 start_sub = rospy.Subscriber('/start3', Bool, ready_callback)
 shape_pub = rospy.Publisher("/shape3", String, queue_size=10)
 start_time = rospy.Time.now()
-end_time = rospy.Time.now() + rospy.Duration(5)
+end_time = rospy.Time.now() + rospy.Duration(6)
 
 rospy.spin()

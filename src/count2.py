@@ -38,7 +38,7 @@ def image_callback(msg):
 
         getShape(maskGreen)
         count = countRed(mask)
-        cv2.imshow("window", mask)
+        # cv2.imshow("window", mask)
         cv2.waitKey(3)
 
         if end_time < rospy.Time.now():
