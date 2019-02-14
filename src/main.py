@@ -91,6 +91,10 @@ class FollowLine(State):
 
         mask_red = cv2.inRange(hsv2, lower_red, upper_red)
 
+        lower_green = np.array([50, 100, 100])
+        upper_green = np.array([120, 255, 255])
+        mask_green = cv2.inRange(hsv, lower_green, upper_green)
+
         h, w, d = image.shape
         self.w = w
         search_top = 3*h/4
@@ -107,12 +111,16 @@ class FollowLine(State):
             cv2.circle(image, (cx, cy), 20, (0, 0, 255), -1)
         if PHASE == "2.1":
             mask_red[h/2:h, 0:w] = 0
+            im2, contours, hierarchy = cv2.findContours(mask_red, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            total_area = sum([cv2.contourArea(x) for x in contours])
+            im2, contours, hierarchy = cv2.findContours(mask_green, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            total_area += sum([cv2.contourArea(x) for x in contours])
+
         else:
             mask_red[0:search_top, 0:w] = 0
-
-        im2, contours, hierarchy = cv2.findContours(
+            im2, contours, hierarchy = cv2.findContours(
             mask_red, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        total_area = sum([cv2.contourArea(x) for x in contours])
+            total_area = sum([cv2.contourArea(x) for x in contours])
 
         if len(contours) > 0:
             self.found_red = True
@@ -127,11 +135,11 @@ class FollowLine(State):
             self.red_area = 0
         elif PHASE == "2.1" and self.found_red:
             self.found_red = False
-            if self.red_area > 8000:
+            if self.red_area > 2000:
                 self.start_timeout = True
             self.red_area = 0
 
-        cv2.imshow("window", mask)
+        cv2.imshow("window", mask_green)
         cv2.waitKey(3)
 
     def execute(self, userdata):
