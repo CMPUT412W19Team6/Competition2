@@ -219,7 +219,7 @@ class Turn(State):
         elif self.angle == 180:  # target is goal + turn_direction * 180
             goal = start_pose[1] + np.pi * turn_direction
         elif self.angle == -90:  # target is goal + turn_direction * 270
-            goal = start_pose[1] + (3.0/2.0) * np.pi * turn_direction
+            goal = start_pose[1] - np.pi/2 * turn_direction
 
         goal = angles_lib.normalize_angle(goal)
 
@@ -229,7 +229,7 @@ class Turn(State):
 
         direction = turn_direction
 
-        if self.angle == 0:
+        if 2 * np.pi - angles_lib.normalize_angle_positive(goal) < angles_lib.normalize_angle_positive(goal):
             direction = turn_direction * -1
 
         while not rospy.is_shutdown():
@@ -530,7 +530,7 @@ if __name__ == "__main__":
     red_min_s = rospy.get_param("~red_min_s", 150)
     red_min_v = rospy.get_param("~red_min_v", 80)
 
-    red_timeout = rospy.Duration(rospy.get_param("~red_timeout", 0.3))
+    red_timeout = rospy.Duration(rospy.get_param("~red_timeout", 0.5))
 
     red_area_threshold = rospy.get_param("~red_area_threshold", 11000)
 
