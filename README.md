@@ -9,21 +9,28 @@ For this competition, we want the robot to follow a pre-defined course and do di
 ### The Course Map
 
 - The course map in simulation:
-<img src="https://github.com/CMPUT412W19Team6/Competition2/blob/master/course_sim.png?s=200" width="200">
+    <img src="https://github.com/CMPUT412W19Team6/Competition2/blob/master/course_sim.png?s=200" width="200">
 
 - The actual course's picture:
-![pick link](https://github.com/CMPUT412W19Team6/Competition2/blob/master/course_pic.png?s=200)
+    <img src="https://github.com/CMPUT412W19Team6/Competition2/blob/master/course_pic.png?s=200" width="200">
+<!-- ![pick link](https://github.com/CMPUT412W19Team6/Competition2/blob/master/course_pic.png?s=200) -->
 
 - Explanation:
      - The robot is supposed to follow the white lines on the floor, and stop for a bit when reaching a red mark on the floor.
      - There are 3 locations where a vision task is required:
         
         1. Location 1: Detect how many cylinders are on the left , (Maximum 3), and signal the result with LED lights and sound. 
-        Example picture: ![location 1 picture](https://github.com/CMPUT412W19Team6/Competition2/blob/master/location1.png?s=200)
-        2. Location 2: Detect how many geometric shapes are there (Maximum 3), signal the result with LED lights and sound,and recognize what the green shape is. 
-        Example picture: ![location 2 picture](https://github.com/CMPUT412W19Team6/Competition2/blob/master/location2.png?s=200)
+        Example picture: 
+        <img src="https://github.com/CMPUT412W19Team6/Competition2/blob/master/location1.png?s=200" width="200">
+        <!-- ![location 1 picture](https://github.com/CMPUT412W19Team6/Competition2/blob/master/location1.png?s=200) -->
+        2. Location 2: Detect how many geometric shapes are there (Maximum 3), signal the result with LED lights and sound,and recognize what the green shape is (one of the three shapes: triangle, square, circle). 
+        Example picture: 
+        <img src="https://github.com/CMPUT412W19Team6/Competition2/blob/master/location2.png?s=200" width="200">
+        <!-- Example picture: ![location 2 picture](https://github.com/CMPUT412W19Team6/Competition2/blob/master/location2.png?s=200) -->
         3. Location 3: Recognize the red shapes on the left one by one, and signal with a sound when finding one that's matching the green shape discovered at Location 2. 
-        Example picture: ![location 3 picture](https://github.com/CMPUT412W19Team6/Competition2/blob/master/location3.png?s=200)
+        Example picture: 
+        <img src="https://github.com/CMPUT412W19Team6/Competition2/blob/master/location3.png?s=200" width="200">
+        <!-- Example picture: ![location 3 picture](https://github.com/CMPUT412W19Team6/Competition2/blob/master/location3.png?s=200) -->
 
 
 ## 2. Pre-requisites
@@ -38,7 +45,7 @@ For this competition, we want the robot to follow a pre-defined course and do di
 
 ### 2.2 Software requirement
 
-- ROS kinetic ([Guide here](http://wiki.ros.org/kinetic/Installation/Ubuntu))
+- ROS kinetic (which includes opencv2 ros package) ([Guide here](http://wiki.ros.org/kinetic/Installation/Ubuntu))
 
 - Turtlebot packages ([Guide here](http://wiki.ros.org/action/show/Robots/TurtleBot?action=show&redirect=TurtleBot))
 
@@ -65,6 +72,12 @@ For this competition, we want the robot to follow a pre-defined course and do di
 
 - ROS smach ([Guide here](http://wiki.ros.org/smach))
 
+- Python2.7 ([Guide here](https://www.python.org/))
+
+- Python package `imutils` ([Repo here](https://github.com/jrosebr1/imutils))
+  ```
+  pip install imutils
+  ```
 ## 3. Execution
 
 ### 3.1 Quickstart
@@ -103,64 +116,36 @@ For this competition, we want the robot to follow a pre-defined course and do di
 ### Overview
 
 - state machine:
+    ![statemachine](https://github.com/CMPUT412W19Team6/Competition2/blob/master/SM_Full.png?s=200)
 
-    -  Full States:
-  ![statemachine](https://github.com/CMPUT412W19Team6/Competition2/blob/master/SM_Full.png?s=200)
-
-    There are 3 phases and a wait start in the state machine.
-    - Wait state:
-        This is the starting state. When button A is pressed, it will enter Phase 1.
-    - Phase 1:
-        This phase
+    > Note1: There are 3 phases and a wait start in the state machine. Everytime the robot saw a long red strip, it will end the current phase.
+    
+    > Note2: The waite state is the starting state. When `button A` is pressed, it will enter Phase 1. And if `button B` is pressed during any phase, it will return to wait state.
 
 ### Counting objects
 
 _Concept_:
 
-    <!-- 1. Move straight until the camera found anything that's within a 1.1 meters.
+    1. Filter out the image based on HSV (Get red color for location 1 and 3, anything but white for location 2).
 
-    2. Turn for 3 seconds. If range is less than 0.7 meter, turn with a higher anguler speed.
-       Then check if the anything's winth `range`.
-      > if yes, go to step 2
-      > if no, go to step 1
-
-    3. In case of a bump:
-      3.1 move back 0.15 meter
-      3.2 turn left
-      3.3 move 0.4 meter
-      3.4
-        > if no more bump, turn back and go to step 1
-        > if another bump, go to step 3.1 -->
+    2. Count the number of contours for what's left.
 
 
-_Some code explanation_:
-
-- How we calculated the minimum range from the laserScan message: minimum non-NAN number in the ranges list
-  ```python
-   def scan_callback(self, msg):
-     validList = [x for x in msg.ranges if not math.isnan(x)]
-     validList.append(float('Inf'))
-     # g range ahead will be the minimal range
-     self.g_range_ahead = min(validList)
-  ```
 ### Recognizing object shapes
 
 _Concept_:
 
-    <!-- 1. Move straight until the camera found anything that's within a 1.1 meters.
+    1. Filter out the image based on HSV. (Get green color for location 2 and red color for location 3)
 
-    2. Turn for 3 seconds. If range is less than 0.7 meter, turn with a higher anguler speed.
-       Then check if the anything's winth `range`.
-      > if yes, go to step 2
-      > if no, go to step 1
+    2. Found the contour with largest area.
 
-    3. In case of a bump:
-      3.1 move back 0.15 meter
-      3.2 turn left
-      3.3 move 0.4 meter
-      3.4
-        > if no more bump, turn back and go to step 1
-        > if another bump, go to step 3.1 -->
+    3. Try to fit a polygon to the contour.
+
+    4. Determine the shape
+    
+        4.1 If the number of conner is 3, it's triangle.
+        4.1 If the number of conner is 4, it's square.
+        4.1 If the number of conner is greater than 4, it's circle.
 
 ### Following the white line
 
@@ -189,3 +174,5 @@ _Concept_:
 ## 5. Lesson Learned
 
 ### Do it the ROS way: Separate tasks into seprate nodes
+
+During our competition, we had counting objects for location1 together with our main node (which is sing image to follow white lines). Because image processing for counting the objects took too many computing resources, the camera was not responding correctly for line following, so the robot always went off track after location1. However, after we took the image process part out and put it into another node, it works perfectly. 
