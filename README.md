@@ -27,7 +27,7 @@ For this competition, we want the robot to follow a pre-defined course and do di
 <!-- 
 ## 2. Pre-requisites
 
-### 2.1 Hardware requirement
+## 2.1 Hardware requirement
 
 - A kobuki turtlebot base
 - An Asus Xtion Pro
@@ -107,40 +107,6 @@ For this competition, we want the robot to follow a pre-defined course and do di
 Optional: A simulation with two different turtlebots - one pursuer and one evader - can be started by starting the `multi_robot_simulation.launch` file (credit: [Sean Scheideman](https://github.com/scheideman/Multiple_turtlebots)) with:
 
     roslaunch comp1 multi_robot_simulation.launch
-
-### 3.2 Parameters
-
-**~start_mode (string, default: "none")**
-
-Which mode the robot will be in at startup. `none` will make the robot wait for a button press to either start evading or pursuing. `pursuer` will start the robot in pursuer mode while `evader` will make the robot evade after startup.
-
-**~pursuer_goal_z (double, default: 0.86)**
-
-The goal distance (in meters) to keep between the evader and the pursuer
-
-**~pursuer_z_threshold (double, default: 0.02)**
-
-How far away from the goal distance (in meters) before the pursuer reacts
-
-**~pursuer_x_threshold (double, default: 4.0)**
-
-How far away (in degrees) from being centered (x displacement) on the person before the robot reacts
-
-**~pursuer_field_of_view (double, default: 41.0)**
-
-How wide (in degrees) should the pursuer's vision be in which to look for evader (0 <= pursuer_field_of_view <= 58)
-
-**~pursuer_max_angular_speed (double, default: 0.8)**
-
-The maximum rotation speed (in radians per second)
-
-**~pursuer_max_linear_speed (double, default: 0.6)**
-
-The max linear speed (in meters per second)
-
-**~pursuer_ramped_rate (double, default: 0.3)**
-
-Rate for ramped velocity change
 
 ## 4. Concepts & Code
 
