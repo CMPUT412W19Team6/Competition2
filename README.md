@@ -184,10 +184,10 @@ _Concept_:
 ## 5. Lesson Learned
 
 ### Do it the ROS way: Separate tasks into seprate nodes
-    ```
+    
     During our competition, we had counting objects for location1 together with our main node (which 
     is using image to follow white lines). Because image processing for counting the objects took too 
     many computing resources, the camera was not responding correctly for line following, so the robot
     always went off track after location1. However, after we took the image process part out and put 
     it into another node, it works perfectly. 
-    ```
+    
