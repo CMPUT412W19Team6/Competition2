@@ -23,8 +23,6 @@ For this competition, we want the robot to follow a pre-defined course and do di
         3. Location 3: Recognize the red shapes on the left one by one, and signal with a sound when finding one that's matching the green shape discovered at Location 2. Example picture: ![location 3 picture](https://github.com/CMPUT412W19Team6/Competition2/blob/master/location3.png?s=200)
 
 
-
-<!-- 
 ## 2. Pre-requisites
 
 ## 2.1 Hardware requirement
