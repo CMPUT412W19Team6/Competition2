@@ -61,8 +61,6 @@ For this competition, we want the robot to follow a pre-defined course and do di
 
 - ROS smach ([Guide here](http://wiki.ros.org/smach))
 
-- rviz ([Link here](http://wiki.ros.org/rviz))
-
 ## 3. Execution
 
 ### 3.1 Quickstart
@@ -134,16 +132,15 @@ _Some code explanation_:
      self.g_range_ahead = min(validList)
   ```
 
-### Persuit
+### Following the white line
 
 _Concept_:
 
-    1. Read LaserScan data and discard any data outside field of view.
+    1. Filter out all the colors of the video stream except white and convert the images to be binary.
 
-    2. Find the nearest point inside field of view.
+    2. Keep 20 rows of the images from the video stream starting at 3/4th the height of the images and discard all the other rows
 
-    3. Calculate the angular and linear distance of the nearest point from the center.
+    3. Calculate the moments and find the center of the white line. Since the images from the video have been converted to be binary, the white pixels of the white line can be considered mass whose zeroth moment represents the total mass and the first moment divided by the zeroth moment (total mass) is the center of the white line (center of mass).
 
-    4. Adjust robot's velocity:
-      4.1 If target is too far away, increase robot's linear velocity. Else, decrease linear speed.
-      4.2 If target is not at center, change robot's angular velocity to turn towards target. -->
+    4. Adjust robot's angular velocity so that if the centroid is not at center, change robot's angular velocity to turn towards the centroid.
+      
