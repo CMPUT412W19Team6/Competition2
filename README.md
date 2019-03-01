@@ -143,4 +143,16 @@ _Concept_:
     3. Calculate the moments and find the center of the white line. Since the images from the video have been converted to be binary, the white pixels of the white line can be considered mass whose zeroth moment represents the total mass and the first moment divided by the zeroth moment (total mass) is the center of the white line (center of mass).
 
     4. Adjust robot's angular velocity so that if the centroid is not at center, change robot's angular velocity to turn towards the centroid.
+    
+### Detecting red spots and differentiating between large and small spots
+
+_Concept_:
+
+    1. Filter out all the colors of the video stream except red and convert the images to be binary.
+
+    2. Keep bottom 50% of rows of the images from the video stream.
+
+    3. Calculate the the sum of the area of all the contours.
+
+    4. Differentiate between large and small spots using a threshold on the sum of area.
       
