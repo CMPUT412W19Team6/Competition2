@@ -71,8 +71,8 @@ For this competition, we want the robot to follow a pre-defined course and do di
 
    ```bash
    # under catkin_ws/src folder
-   mkdir comp1
-   git clone https://github.com/CMPUT412W19Team6/Competition1.git comp1
+   mkdir comp2
+   git clone https://github.com/CMPUT412W19Team6/Competition2.git
    ```
 
 2. Run catkin_make and source the setup.bash
@@ -85,26 +85,16 @@ For this competition, we want the robot to follow a pre-defined course and do di
 
 3. Connect your your kobuki base, Asus Xtion Pro and controller.
 
-4. Power up the kobuki base
+4. Power up the kobuki base and put it on the start position
 
 5. Start the library
 
    ```bash
-   roslaunch comp1 comp1.launch
+   roslaunch comp2 start.launch
    ```
 
-6. Start the turtlebot
+6. Start the turtlebot by pressing A on the controller
 
-   > note: you have to press B to stop the robot when `switching betwwen different modes`
-
-   - to start `Evade` : press A on the controller
-   - to start `Persuit`: press X on the contorller
-
-7. To stop the turtlebot, press B on the controller
-
-Optional: A simulation with two different turtlebots - one pursuer and one evader - can be started by starting the `multi_robot_simulation.launch` file (credit: [Sean Scheideman](https://github.com/scheideman/Multiple_turtlebots)) with:
-
-    roslaunch comp1 multi_robot_simulation.launch
 
 ## 4. Concepts & Code
 
